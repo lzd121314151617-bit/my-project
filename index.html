@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PixelPress · Image Optimizer</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif:wght@400;600;700&family=DM+Mono:wght@400;500&family=Sora:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #1a1612;
+    --paper: #f5f0e8;
+    --warm: #e8dfc8;
+    --accent: #c84b2f;
+    --gold: #c8972f;
+    --muted: #8a7e6e;
+    --border: #d4c9b0;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    font-family: 'Sora', sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    min-height: 100vh;
+  }
+
+  .mono { font-family: 'DM Mono', monospace; }
+  .serif { font-family: 'Noto Serif', serif; }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 100;
+    opacity: 0.6;
+  }
+
+  .drop-zone {
+    border: 2px dashed var(--border);
+    transition: all 0.25s ease;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .drop-zone::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, transparent 40%, rgba(200,75,47,0.04) 100%);
+    pointer-events: none;
+  }
+
+  .drop-zone.drag-over {
+    border-color: var(--accent);
+    background: rgba(200,75,47,0.04);
+    transform: scale(1.005);
+  }
+
+  .drop-zone.has-file {
+    border-style: solid;
+    border-color: var(--gold);
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--ink);
+    border: 3px solid var(--paper);
+    box-shadow: 0 0 0 1.5px var(--ink);
+    transition: transform 0.15s;
+  }
+
+  input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); }
+
+  input[type="range"]::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--ink);
+    border: 3px solid var(--paper);
+    box-shadow: 0 0 0 1.5px var(--ink);
+    cursor: pointer;
+  }
+
+  .fmt-btn {
+    border: 1.5px solid var(--border);
+    background: transparent;
+    cursor: pointer;
+    transition: all 0.18s ease;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.8rem;
+    letter-spacing: 0.05em;
+  }
+
+  .fmt-btn:hover { border-color: var(--muted); background: var(--warm); }
+  .fmt-btn.active {
+    background: var(--ink);
+    color: var(--paper);
+    border-color: var(--ink);
+  }
+
+  .progress-bar {
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--gold));
+    width: 0%;
+    transition: width 0.3s ease;
+    border-radius: 2px;
+  }
+
+  .preview-card {
+    background: white;
+    border: 1.5px solid var(--border);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .dl-btn {
+    background: var(--ink);
+    color: var(--paper);
+    border: none;
+    cursor: pointer;
+    font-family: 'Sora', sans-serif;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    transition: all 0.2s ease;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .dl-btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--accent);
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+  }
+
+  .dl-btn:hover::before { transform: translateX(0); }
+  .dl-btn span { position: relative; z-index: 1; }
+  .dl-btn:active { transform: scale(0.98); }
+
+  .reduction-badge {
+    background: linear-gradient(135deg, var(--accent), #e07060);
+    color: white;
+    font-family: 'DM Mono', monospace;
+    font-weight: 500;
+  }
+
+  .h-rule { border: none; border-top: 1px solid var(--border); }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .fade-up { animation: fadeUp 0.5s ease forwards; }
+
+  #results-section { display: none; animation: fadeUp 0.5s ease; }
+  #results-section.visible { display: block; }
+
+  .checker-bg {
+    background-image: linear-gradient(45deg, #e0d8c8 25%, transparent 25%),
+                      linear-gradient(-45deg, #e0d8c8 25%, transparent 25%),
+                      linear-gradient(45deg, transparent 75%, #e0d8c8 75%),
+                      linear-gradient(-45deg, transparent 75%, #e0d8c8 75%);
+    background-size: 16px 16px;
+    background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+  }
+
+  .tooltip { position: relative; }
+  .tooltip:hover::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--ink);
+    color: var(--paper);
+    font-size: 0.7rem;
+    font-family: 'DM Mono', monospace;
+    white-space: nowrap;
+    padding: 4px 10px;
+    border-radius: 2px;
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  select {
+    font-family: 'DM Mono', monospace;
+    background: var(--paper);
+    border: 1.5px solid var(--border);
+    cursor: pointer;
+    outline: none;
+    transition: border-color 0.18s;
+  }
+  select:focus { border-color: var(--ink); }
+
+  .stat-box { background: var(--warm); border: 1px solid var(--border); }
+</style>
+</head>
+<body class="py-10 px-4 md:px-8">
+
+<header class="max-w-3xl mx-auto mb-12">
+  <div class="flex items-baseline gap-4 mb-1">
+    <h1 class="serif text-4xl font-bold tracking-tight" style="color:var(--ink)">PixelPress</h1>
+    <span class="mono text-xs tracking-widest uppercase" style="color:var(--muted)">Image Optimizer</span>
+  </div>
+  <hr class="h-rule my-3">
+  <p class="text-sm font-light" style="color:var(--muted)">Local browser compression · Format conversion · Zero data upload</p>
+</header>
+
+<main class="max-w-3xl mx-auto space-y-6">
+
+  <section>
+    <div
+      id="drop-zone"
+      class="drop-zone rounded-sm p-12 text-center cursor-pointer"
+      onclick="document.getElementById('file-input').click()"
+    >
+      <input type="file" id="file-input" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" class="hidden" multiple>
+
+      <div id="drop-idle">
+        <div class="mb-5">
+          <svg width="52" height="52" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg" class="mx-auto opacity-40">
+            <rect x="4" y="12" width="44" height="30" rx="2" stroke="currentColor" stroke-width="2"/>
+            <path d="M4 36l12-10 8 7 10-12 14 15" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <circle cx="15" cy="21" r="3" stroke="currentColor" stroke-width="2"/>
+            <path d="M26 6v8M22 9l4-3 4 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <p class="serif text-lg font-semibold mb-1">Drop images here</p>
+        <p class="text-sm" style="color:var(--muted)">or click to browse · JPG, PNG, WebP, GIF, AVIF supported</p>
+        <p class="mono text-xs mt-3" style="color:var(--border)">Multiple files supported · Paste from clipboard with Ctrl+V</p>
+      </div>
+
+      <div id="drop-active" class="hidden">
+        <p class="serif text-lg font-semibold" style="color:var(--accent)">Release to upload</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="settings-panel" class="hidden fade-up">
+    <div class="border rounded-sm p-6 space-y-6" style="border-color:var(--border); background:rgba(255,255,255,0.5)">
+
+      <div>
+        <div class="flex items-center justify-between mb-3">
+          <label class="text-sm font-semibold tracking-wide">Compression Quality</label>
+          <div class="flex items-center gap-2">
+            <span id="quality-val" class="mono text-2xl font-medium" style="color:var(--accent)">82</span>
+            <span class="mono text-xs" style="color:var(--muted)">/ 100</span>
+          </div>
+        </div>
+        <input type="range" id="quality-slider" min="1" max="100" value="82" class="w-full">
+        <div class="flex justify-between mt-1.5">
+          <span class="mono text-xs" style="color:var(--muted)">Smallest file</span>
+          <span class="mono text-xs" style="color:var(--muted)">Best quality</span>
+        </div>
+      </div>
+
+      <hr class="h-rule">
+
+      <div>
+        <label class="text-sm font-semibold tracking-wide block mb-3">Output Format</label>
+        <div class="flex gap-2 flex-wrap">
+          <button class="fmt-btn px-4 py-2 rounded-sm active" data-fmt="original">Original</button>
+          <button class="fmt-btn px-4 py-2 rounded-sm" data-fmt="image/jpeg">JPEG</button>
+          <button class="fmt-btn px-4 py-2 rounded-sm" data-fmt="image/png">PNG</button>
+          <button class="fmt-btn px-4 py-2 rounded-sm" data-fmt="image/webp">WebP</button>
+        </div>
+        <p class="text-xs mt-2" style="color:var(--muted)">
+          <span class="mono">PNG</span> is lossless but larger · <span class="mono">WebP</span> is modern with better compression
+        </p>
+      </div>
+
+      <hr class="h-rule">
+
+      <div>
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <label class="text-sm font-semibold tracking-wide block">Max Dimension</label>
+            <p class="text-xs mt-0.5" style="color:var(--muted)">Proportionally scaled, won't exceed this size</p>
+          </div>
+          <select id="max-dim" class="text-sm px-3 py-1.5 rounded-sm">
+            <option value="0">No resize</option>
+            <option value="3840">4K (3840px)</option>
+            <option value="2560">2K (2560px)</option>
+            <option value="1920">1080p (1920px)</option>
+            <option value="1280" selected>720p (1280px)</option>
+            <option value="800">Small (800px)</option>
+            <option value="400">Thumbnail (400px)</option>
+          </select>
+        </div>
+      </div>
+
+      <button id="process-btn" class="dl-btn w-full py-3 rounded-sm text-sm">
+        <span>⚡ Compress Now</span>
+      </button>
+    </div>
+  </section>
+
+  <section id="results-section">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="serif text-xl font-semibold">Results</h2>
+      <button id="reset-btn" class="mono text-xs px-3 py-1.5 rounded-sm" style="border:1.5px solid var(--border); color:var(--muted); cursor:pointer; background:transparent">
+        Upload New
+      </button>
+    </div>
+
+    <div id="summary-stats" class="grid grid-cols-3 gap-3 mb-5"></div>
+
+    <div id="progress-wrap" class="mb-5 hidden">
+      <div class="flex justify-between text-xs mb-1.5" style="color:var(--muted)">
+        <span id="progress-label" class="mono">Processing...</span>
+        <span id="progress-pct" class="mono">0%</span>
+      </div>
+      <div class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
+    </div>
+
+    <div id="image-list" class="space-y-4"></div>
+
+    <div id="download-all-wrap" class="mt-5 hidden">
+      <button id="download-all-btn" class="dl-btn w-full py-3 rounded-sm text-sm">
+        <span>⬇ Download All</span>
+      </button>
+    </div>
+  </section>
+
+</main>
+
+<footer class="max-w-3xl mx-auto mt-16 pt-5" style="border-top:1px solid var(--border)">
+  <p class="mono text-xs text-center" style="color:var(--border)">
+    All processing happens locally in your browser · No data is uploaded · Your files stay private
+  </p>
+</footer>
+
+<script>
+(() => {
+  let files = [];
+  let results = [];
+  let selectedFormat = 'original';
+
+  const dropZone = document.getElementById('drop-zone');
+  const fileInput = document.getElementById('file-input');
+  const settingsPanel = document.getElementById('settings-panel');
+  const resultsSection = document.getElementById('results-section');
+  const qualitySlider = document.getElementById('quality-slider');
+  const qualityVal = document.getElementById('quality-val');
+  const processBtn = document.getElementById('process-btn');
+  const imageList = document.getElementById('image-list');
+  const summaryStats = document.getElementById('summary-stats');
+  const progressWrap = document.getElementById('progress-wrap');
+  const progressFill = document.getElementById('progress-fill');
+  const progressLabel = document.getElementById('progress-label');
+  const progressPct = document.getElementById('progress-pct');
+  const downloadAllWrap = document.getElementById('download-all-wrap');
+  const resetBtn = document.getElementById('reset-btn');
+  const maxDimSelect = document.getElementById('max-dim');
+
+  document.querySelectorAll('.fmt-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.fmt-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      selectedFormat = btn.dataset.fmt;
+    });
+  });
+
+  qualitySlider.addEventListener('input', () => {
+    qualityVal.textContent = qualitySlider.value;
+  });
+
+  dropZone.addEventListener('dragover', e => {
+    e.preventDefault();
+    dropZone.classList.add('drag-over');
+    document.getElementById('drop-idle').classList.add('hidden');
+    document.getElementById('drop-active').classList.remove('hidden');
+  });
+
+  dropZone.addEventListener('dragleave', () => {
+    dropZone.classList.remove('drag-over');
+    document.getElementById('drop-idle').classList.remove('hidden');
+    document.getElementById('drop-active').classList.add('hidden');
+  });
+
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    document.getElementById('drop-idle').classList.remove('hidden');
+    document.getElementById('drop-active').classList.add('hidden');
+    const dropped = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+    if (dropped.length) handleFiles(dropped);
+  });
+
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files.length) handleFiles(Array.from(fileInput.files));
+  });
+
+  processBtn.addEventListener('click', processImages);
+  resetBtn.addEventListener('click', resetAll);
+
+  function handleFiles(newFiles) {
+    files = newFiles;
+    results = [];
+    settingsPanel.classList.remove('hidden');
+    resultsSection.classList.remove('visible');
+    resultsSection.style.display = 'none';
+    dropZone.classList.add('has-file');
+    const count = files.length;
+    dropZone.querySelector('#drop-idle p.serif').textContent =
+      count === 1 ? `Selected: ${files[0].name}` : `${count} images selected`;
+  }
+
+  function formatBytes(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+  }
+
+  function getOutputMime(originalMime) {
+    if (selectedFormat === 'original') return originalMime;
+    return selectedFormat;
+  }
+
+  function getExtFromMime(mime) {
+    const map = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'image/avif': 'avif' };
+    return map[mime] || 'jpg';
+  }
+
+  function compressImage(file, quality, maxDim, outputMime) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        let { width, height } = img;
+        if (maxDim > 0 && (width > maxDim || height > maxDim)) {
+          const ratio = Math.min(maxDim / width, maxDim / height);
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        canvas.toBlob(blob => {
+          if (!blob) { reject(new Error('Compression failed')); return; }
+          resolve({ blob, width, height });
+        }, outputMime, quality / 100);
+      };
+      img.onerror = () => reject(new Error('Failed to read image'));
+      img.src = url;
+    });
+  }
+
+  async function processImages() {
+    if (!files.length) return;
+    const quality = parseInt(qualitySlider.value);
+    const maxDim = parseInt(maxDimSelect.value);
+
+    resultsSection.classList.add('visible');
+    resultsSection.style.display = 'block';
+    imageList.innerHTML = '';
+    summaryStats.innerHTML = '';
+    downloadAllWrap.classList.add('hidden');
+    progressWrap.classList.remove('hidden');
+    results = [];
+
+    processBtn.disabled = true;
+    processBtn.querySelector('span').textContent = '⏳ Processing...';
+
+    let totalOriginal = 0, totalCompressed = 0;
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      progressFill.style.width = Math.round((i / files.length) * 100) + '%';
+      progressPct.textContent = Math.round((i / files.length) * 100) + '%';
+      progressLabel.textContent = `Processing ${i + 1} of ${files.length}: ${file.name}`;
+
+      try {
+        const outputMime = getOutputMime(file.type) || 'image/jpeg';
+        const { blob, width, height } = await compressImage(file, quality, maxDim, outputMime);
+        totalOriginal += file.size;
+        totalCompressed += blob.size;
+        const ext = getExtFromMime(outputMime);
+        const outName = `${file.name.replace(/\.[^.]+$/, '')}_optimized.${ext}`;
+        const result = {
+          file, blob, outputMime, outName,
+          originalUrl: URL.createObjectURL(file),
+          compressedUrl: URL.createObjectURL(blob),
+          width, height
+        };
+        results.push(result);
+        renderResultCard(result, i);
+      } catch (err) {
+        renderErrorCard(file, err.message, i);
+      }
+    }
+
+    progressFill.style.width = '100%';
+    progressPct.textContent = '100%';
+    progressLabel.textContent = '✓ All done';
+    setTimeout(() => progressWrap.classList.add('hidden'), 1200);
+
+    const reduction = totalOriginal > 0 ? Math.round((1 - totalCompressed / totalOriginal) * 100) : 0;
+    summaryStats.innerHTML = `
+      <div class="stat-box rounded-sm p-3 text-center">
+        <div class="mono text-xs mb-1" style="color:var(--muted)">Original Size</div>
+        <div class="font-semibold">${formatBytes(totalOriginal)}</div>
+      </div>
+      <div class="stat-box rounded-sm p-3 text-center">
+        <div class="mono text-xs mb-1" style="color:var(--muted)">Compressed Size</div>
+        <div class="font-semibold">${formatBytes(totalCompressed)}</div>
+      </div>
+      <div class="rounded-sm p-3 text-center reduction-badge">
+        <div class="mono text-xs mb-1 opacity-80">Space Saved</div>
+        <div class="font-bold text-lg">${reduction > 0 ? '-' : ''}${Math.abs(reduction)}%</div>
+      </div>
+    `;
+
+    if (results.length > 1) downloadAllWrap.classList.remove('hidden');
+    processBtn.disabled = false;
+    processBtn.querySelector('span').textContent = '⚡ Compress Again';
+    resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function renderResultCard(result, idx) {
+    const { file, blob, outName, originalUrl, compressedUrl, width, height } = result;
+    const reduction = Math.round((1 - blob.size / file.size) * 100);
+    const reductionText = reduction >= 0 ? `-${reduction}%` : `+${Math.abs(reduction)}%`;
+    const reductionColor = reduction >= 0 ? 'var(--accent)' : '#2f7ac8';
+
+    const card = document.createElement('div');
+    card.className = 'preview-card rounded-sm overflow-hidden fade-up';
+    card.style.animationDelay = (idx * 0.06) + 's';
+    card.innerHTML = `
+      <div class="checker-bg p-3 flex gap-3 items-start">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-start justify-between gap-2 mb-2">
+            <div>
+              <p class="text-sm font-semibold truncate" title="${outName}">${outName}</p>
+              <p class="mono text-xs mt-0.5" style="color:var(--muted)">${width} × ${height} px</p>
+            </div>
+            <span class="mono text-sm font-bold flex-shrink-0 px-2 py-0.5 rounded-sm"
+                  style="color:${reductionColor}; background:${reduction>=0?'rgba(200,75,47,0.1)':'rgba(47,122,200,0.1)'}">
+              ${reductionText}
+            </span>
+          </div>
+          <div class="flex gap-4 text-xs" style="color:var(--muted)">
+            <span class="mono">Original: <strong style="color:var(--ink)">${formatBytes(file.size)}</strong></span>
+            <span>→</span>
+            <span class="mono">Compressed: <strong style="color:var(--ink)">${formatBytes(blob.size)}</strong></span>
+          </div>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 border-t" style="border-color:var(--border)">
+        <div class="relative border-r" style="border-color:var(--border)">
+          <div class="absolute top-1 left-1 z-10 mono text-xs px-1.5 py-0.5 rounded-sm" style="background:rgba(26,22,18,0.7);color:#f5f0e8">Original</div>
+          <img src="${originalUrl}" class="w-full object-contain" style="max-height:160px">
+        </div>
+        <div class="relative">
+          <div class="absolute top-1 left-1 z-10 mono text-xs px-1.5 py-0.5 rounded-sm" style="background:rgba(200,75,47,0.85);color:#fff">Compressed</div>
+          <img src="${compressedUrl}" class="w-full object-contain" style="max-height:160px">
+        </div>
+      </div>
+      <div class="p-3 flex gap-2 border-t" style="border-color:var(--border); background:rgba(255,255,255,0.8)">
+        <a href="${compressedUrl}" download="${outName}"
+           class="dl-btn flex-1 py-2 rounded-sm text-sm text-center no-underline flex items-center justify-center gap-2">
+          <span>⬇ Download</span>
+        </a>
+        <button class="copy-btn mono text-xs px-3 py-2 rounded-sm tooltip"
+                data-tip="Copy to clipboard" data-url="${compressedUrl}"
+                style="border:1.5px solid var(--border);background:transparent;cursor:pointer">
+          Copy Image
+        </button>
+      </div>
+    `;
+
+    card.querySelector('.copy-btn').addEventListener('click', async function() {
+      try {
+        const r = await fetch(this.dataset.url);
+        const b = await r.blob();
+        await navigator.clipboard.write([new ClipboardItem({ [b.type]: b })]);
+        const orig = this.textContent;
+        this.textContent = '✓ Copied';
+        setTimeout(() => { this.textContent = orig; }, 1500);
+      } catch {
+        this.textContent = 'Not supported';
+        setTimeout(() => { this.textContent = 'Copy Image'; }, 1500);
+      }
+    });
+
+    imageList.appendChild(card);
+  }
+
+  function renderErrorCard(file, msg, idx) {
+    const card = document.createElement('div');
+    card.className = 'rounded-sm p-4 fade-up';
+    card.style.cssText = `border:1.5px solid #e07070;background:rgba(220,80,80,0.05);animation-delay:${idx*0.06}s`;
+    card.innerHTML = `
+      <p class="text-sm font-semibold" style="color:#c84b2f">${file.name}</p>
+      <p class="mono text-xs mt-1" style="color:#a05050">${msg}</p>
+    `;
+    imageList.appendChild(card);
+  }
+
+  document.getElementById('download-all-btn').addEventListener('click', async () => {
+    const btn = document.getElementById('download-all-btn');
+    btn.querySelector('span').textContent = '⏳ Preparing...';
+    for (let i = 0; i < results.length; i++) {
+      const a = document.createElement('a');
+      a.href = results[i].compressedUrl;
+      a.download = results[i].outName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      await new Promise(r => setTimeout(r, 300));
+    }
+    btn.querySelector('span').textContent = '✓ Done';
+    setTimeout(() => { btn.querySelector('span').textContent = '⬇ Download All'; }, 2000);
+  });
+
+  function resetAll() {
+    files = []; results = [];
+    fileInput.value = '';
+    settingsPanel.classList.add('hidden');
+    resultsSection.classList.remove('visible');
+    resultsSection.style.display = 'none';
+    dropZone.classList.remove('has-file');
+    dropZone.querySelector('#drop-idle p.serif').textContent = 'Drop images here';
+    imageList.innerHTML = '';
+    summaryStats.innerHTML = '';
+    processBtn.querySelector('span').textContent = '⚡ Compress Now';
+  }
+
+  document.addEventListener('paste', e => {
+    const imgs = Array.from(e.clipboardData?.items || []).filter(it => it.kind === 'file' && it.type.startsWith('image/'));
+    if (imgs.length) handleFiles(imgs.map(it => it.getAsFile()));
+  });
+})();
+</script>
+</body>
+</html>
